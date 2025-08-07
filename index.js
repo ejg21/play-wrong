@@ -79,18 +79,22 @@ app.get('/api/scrape', async (req, res) => {
         if (element) {
           await element.click();
           console.log(`Clicked element with selector: ${clickSelector}`);
-
-          if (waitFor) {
-            console.log(`Waiting for request containing: ${waitFor}`);
-            await page.waitForRequest(request => request.url().includes(waitFor), { timeout: 15000 });
-            console.log(`Found request: ${waitFor}`);
-          } else {
-            await new Promise(resolve => setTimeout(resolve, 5000));
-          }
         }
       } catch (e) {
         console.log(`Could not find or click the element with selector "${clickSelector}".`);
       }
+    }
+
+    if (waitFor) {
+      try {
+        console.log(`Waiting for request containing: ${waitFor}`);
+        await page.waitForRequest(request => request.url().includes(waitFor), { timeout: 15000 });
+        console.log(`Found request: ${waitFor}`);
+      } catch (e) {
+        console.log(`Did not find request containing "${waitFor}" within the timeout.`);
+      }
+    } else {
+      await new Promise(resolve => setTimeout(resolve, 5000));
     }
 
     let screenshotBase64 = null;
