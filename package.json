@@ -1,0 +1,15 @@
+{
+  "name": "scrape-right-railway",
+  "version": "1.0.0",
+  "description": "A powerful, serverless web scraper built with Playwright and deployed on Railway.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "puppeteer": "^22.12.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  }
+}
