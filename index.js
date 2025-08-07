@@ -9,7 +9,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 app.get('/api/scrape', async (req, res) => {
-  const { url, filter, clickSelector, origin: customOrigin, referer, iframe, screenshot } = req.query;
+  const { url, filter, clickSelector, origin: customOrigin, referer, iframe, screenshot, waitFor } = req.query;
 
   console.log(`Scraping url: ${url}`);
 
@@ -77,7 +77,14 @@ app.get('/api/scrape', async (req, res) => {
         if (element) {
           await element.click();
           console.log(`Clicked element with selector: ${clickSelector}`);
-          await new Promise(resolve => setTimeout(resolve, 10000));
+
+          if (waitFor) {
+            console.log(`Waiting for request containing: ${waitFor}`);
+            await page.waitForRequest(request => request.url().includes(waitFor), { timeout: 15000 });
+            console.log(`Found request: ${waitFor}`);
+          } else {
+            await new Promise(resolve => setTimeout(resolve, 5000));
+          }
         }
       } catch (e) {
         console.log(`Could not find or click the element with selector "${clickSelector}".`);
