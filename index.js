@@ -9,7 +9,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 app.get('/api/scrape', async (req, res) => {
-  const { url, filter, clickSelector, origin: customOrigin, referer, iframe } = req.query;
+  const { url, filter, clickSelector, origin: customOrigin, referer, iframe, screenshot } = req.query;
 
   console.log(`Scraping url: ${url}`);
 
@@ -86,10 +86,17 @@ app.get('/api/scrape', async (req, res) => {
       }
     }
 
+    let screenshotBase64 = null;
+    if (screenshot === 'true') {
+      const screenshotBuffer = await page.screenshot({ encoding: 'base64' });
+      screenshotBase64 = screenshotBuffer.toString('base64');
+    }
+
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
     res.status(200).json({
       message: `Successfully scraped ${url}`,
       requests,
+      screenshot: screenshotBase64,
     });
   } catch (error) {
     console.error(error);
