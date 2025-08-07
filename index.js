@@ -1,6 +1,7 @@
 const express = require('express');
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const chromium = require('@sparticuz/chromium');
 
 puppeteer.use(StealthPlugin());
 
@@ -19,15 +20,9 @@ app.get('/api/scrape', async (req, res) => {
   let browser = null;
   try {
     browser = await puppeteer.launch({
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-infobars',
-        '--window-position=0,0',
-        '--ignore-certifcate-errors',
-        '--ignore-certifcate-errors-spki-list'
-      ],
-      headless: 'new',
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
     });
 
     const page = await browser.newPage();
