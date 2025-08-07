@@ -53,13 +53,11 @@ app.get('/api/scrape', async (req, res) => {
         return;
       }
 
-      if (!filter || (filter && requestUrl.includes(filter))) {
-        requests.push({
-          url: requestUrl,
-          method: request.method(),
-          headers: request.headers(),
-        });
-      }
+      requests.push({
+        url: requestUrl,
+        method: request.method(),
+        headers: request.headers(),
+      });
       request.continue();
     });
 
