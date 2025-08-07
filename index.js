@@ -25,10 +25,9 @@ app.get('/api/scrape', async (req, res) => {
         '--disable-infobars',
         '--window-position=0,0',
         '--ignore-certifcate-errors',
-        '--ignore-certifcate-errors-spki-list',
-        '--user-agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"'
+        '--ignore-certifcate-errors-spki-list'
       ],
-      headless: true,
+      headless: 'new',
     });
 
     const page = await browser.newPage();
