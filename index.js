@@ -83,7 +83,7 @@ app.get('/api/scrape', async (req, res) => {
         if (element) {
           await element.click();
           console.log(`Clicked element with selector: ${clickSelector}`);
-          await new Promise(resolve => setTimeout(resolve, 5000));
+          await new Promise(resolve => setTimeout(resolve, 10000));
         }
       } catch (e) {
         console.log(`Could not find or click the element with selector "${clickSelector}".`);
