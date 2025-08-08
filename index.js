@@ -3,50 +3,30 @@ const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const AdblockerPlugin = require('puppeteer-extra-plugin-adblocker');
 const chromium = require('@sparticuz/chromium');
-const { createClient } = require('@libsql/client');
+const NodeCache = require('node-cache');
 
 puppeteer.use(StealthPlugin());
 puppeteer.use(AdblockerPlugin({ blockTrackers: true }));
 
 const app = express();
 const port = process.env.PORT || 3000;
-
-const db = createClient({
-  url: process.env.TURSO_DATABASE_URL,
-  authToken: process.env.TURSO_AUTH_TOKEN,
-});
-
-async function setupDatabase() {
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS cache (
-      key TEXT PRIMARY KEY,
-      value TEXT,
-      timestamp INTEGER
-    );
-  `);
-}
-
-setupDatabase();
+const myCache = new NodeCache({ stdTTL: 86400 });
 
 app.get('/api/scrape', async (req, res) => {
   const { url, filter, clickSelector, origin: customOrigin, referer, iframe, screenshot, waitFor } = req.query;
 
   const cacheKey = req.originalUrl;
-  try {
-    const rs = await db.execute({
-      sql: "SELECT value, timestamp FROM cache WHERE key = ? AND timestamp > ?",
-      args: [cacheKey, Date.now() - 86400 * 1000],
-    });
-
-    if (rs.rows.length > 0) {
-      console.log(`Returning cached response for: ${url}`);
-      return res.status(200).json(JSON.parse(rs.rows[0].value));
-    }
-  } catch (err) {
-    console.error('Turso GET error:', err);
+  const cachedValue = myCache.get(cacheKey);
+  if (cachedValue) {
+    console.log(`Returning cached response for: ${url}`);
+    return res.status(200).json(cachedValue);
   }
 
   console.log(`Scraping url: ${url}`);
+
+  if (!url) {
+    return res.status(400).send('Please provide a URL parameter.');
+  }
 
   let browser = null;
   try {
@@ -138,14 +118,7 @@ app.get('/api/scrape', async (req, res) => {
       screenshot: screenshotBase64,
     };
 
-    try {
-      await db.execute({
-        sql: "INSERT OR REPLACE INTO cache (key, value, timestamp) VALUES (?, ?, ?)",
-        args: [cacheKey, JSON.stringify(responseData), Date.now()],
-      });
-    } catch (err) {
-      console.error('Turso SET error:', err);
-    }
+    myCache.set(cacheKey, responseData);
 
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
     res.status(200).json(responseData);
