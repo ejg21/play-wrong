@@ -14,20 +14,26 @@ const port = process.env.PORT || 3000;
 const db = createClient({
   url: process.env.TURSO_DATABASE_URL,
   authToken: process.env.TURSO_AUTH_TOKEN,
+  syncUrl: process.env.TURSO_SYNC_URL,
 });
+
+async function setupDatabase() {
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS cache (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      timestamp INTEGER
+    );
+  `);
+}
+
+setupDatabase();
 
 app.get('/api/scrape', async (req, res) => {
   const { url, filter, clickSelector, origin: customOrigin, referer, iframe, screenshot, waitFor } = req.query;
 
   const cacheKey = req.originalUrl;
   try {
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS cache (
-        key TEXT PRIMARY KEY,
-        value TEXT,
-        timestamp INTEGER
-      );
-    `);
     const rs = await db.execute({
       sql: "SELECT value, timestamp FROM cache WHERE key = ? AND timestamp > ?",
       args: [cacheKey, Date.now() - 86400 * 1000],
