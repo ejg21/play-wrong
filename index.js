@@ -14,7 +14,6 @@ const port = process.env.PORT || 3000;
 const db = createClient({
   url: process.env.TURSO_DATABASE_URL,
   authToken: process.env.TURSO_AUTH_TOKEN,
-  syncUrl: process.env.TURSO_SYNC_URL,
 });
 
 async function setupDatabase() {
