@@ -13,6 +13,6 @@
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-adblocker": "^2.13.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
-    "node-cache": "^5.1.2"
+    "@libsql/client": "^0.7.0"
   }
 }
