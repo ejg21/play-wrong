@@ -24,7 +24,7 @@ app.get('/api/scrape', async (req, res) => {
     await db.execute(`
       CREATE TABLE IF NOT EXISTS cache (
         key TEXT PRIMARY KEY,
-        value BLOB,
+        value TEXT,
         timestamp INTEGER
       );
     `);
