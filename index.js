@@ -3,6 +3,7 @@ const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const AdblockerPlugin = require('puppeteer-extra-plugin-adblocker');
 const chromium = require('@sparticuz/chromium');
+const { createClient } = require('@libsql/client');
 
 puppeteer.use(StealthPlugin());
 puppeteer.use(AdblockerPlugin({ blockTrackers: true }));
@@ -10,15 +11,57 @@ puppeteer.use(AdblockerPlugin({ blockTrackers: true }));
 const app = express();
 const port = process.env.PORT || 3000;
 
+const turso = createClient({
+  url: process.env.TURSO_DATABASE_URL,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
+
+const createCacheTable = async () => {
+  try {
+    await turso.execute(`
+      CREATE TABLE IF NOT EXISTS scrape_cache (
+        url TEXT PRIMARY KEY,
+        data TEXT,
+        screenshot TEXT,
+        createdAt INTEGER
+      );
+    `);
+    console.log('Cache table is ready.');
+  } catch (error) {
+    console.error('Failed to create cache table:', error);
+  }
+};
+
 app.get('/api/scrape', async (req, res) => {
   const { url, filter, clickSelector, origin: customOrigin, referer, iframe, screenshot, waitFor } = req.query;
-
-  console.log(`Scraping url: ${url}`);
 
   if (!url) {
     return res.status(400).send('Please provide a URL parameter.');
   }
 
+  try {
+    const cacheResult = await turso.execute({
+      sql: 'SELECT data, screenshot, createdAt FROM scrape_cache WHERE url = ?',
+      args: [url],
+    });
+
+    if (cacheResult.rows.length > 0) {
+      const row = cacheResult.rows;
+      const cacheAge = Date.now() - new Date(row.createdAt).getTime();
+      if (cacheAge < 3600000) { // 1 hour TTL
+        console.log(`Returning cached response for ${url}`);
+        return res.status(200).json({
+          message: `Successfully returned cached scrape for ${url}`,
+          requests: JSON.parse(row.data),
+          screenshot: row.screenshot,
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Cache check failed:', error);
+  }
+
+  console.log(`Scraping url: ${url}`);
   let browser = null;
   try {
     browser = await puppeteer.launch({
@@ -38,28 +81,20 @@ app.get('/api/scrape', async (req, res) => {
     await page.setExtraHTTPHeaders(headers);
 
     let requests = [];
-
     await page.setRequestInterception(true);
     page.on('request', (request) => {
       const resourceType = request.resourceType();
       const requestUrl = request.url();
-
       const blockedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.css', '.woff', '.woff2', '.ttf', '.otf'];
       if (resourceType === 'image' || resourceType === 'stylesheet' || resourceType === 'font' || blockedExtensions.some(ext => requestUrl.endsWith(ext))) {
         request.abort();
         return;
       }
-
       if (requestUrl.includes('google-analytics') || requestUrl.includes('googletagmanager')) {
         request.abort();
         return;
       }
-
-      requests.push({
-        url: requestUrl,
-        method: request.method(),
-        headers: request.headers(),
-      });
+      requests.push({ url: requestUrl, method: request.method(), headers: request.headers() });
       request.continue();
     });
 
@@ -103,6 +138,15 @@ app.get('/api/scrape', async (req, res) => {
       screenshotBase64 = screenshotBuffer.toString('base64');
     }
 
+    try {
+      await turso.execute({
+        sql: 'INSERT INTO scrape_cache (url, data, screenshot, createdAt) VALUES (?, ?, ?, ?) ON CONFLICT(url) DO UPDATE SET data = excluded.data, screenshot = excluded.screenshot, createdAt = excluded.createdAt',
+        args: [url, JSON.stringify(requests), screenshotBase64, new Date().toISOString()],
+      });
+    } catch (error) {
+      console.error('Failed to cache result:', error);
+    }
+
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
     res.status(200).json({
       message: `Successfully scraped ${url}`,
@@ -119,6 +163,11 @@ app.get('/api/scrape', async (req, res) => {
   }
 });
 
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
-});
+const startServer = async () => {
+  await createCacheTable();
+  app.listen(port, () => {
+    console.log(`Server is running on port ${port}`);
+  });
+};
+
+startServer();
