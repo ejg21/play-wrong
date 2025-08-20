@@ -11,13 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy package.json and package-lock.json
 COPY package.json ./
 
-# Set Puppeteer cache directory
-ENV PUPPETEER_CACHE_DIR=/usr/src/app/.cache/puppeteer
-
 # Install app dependencies
 RUN npm install
 RUN npx puppeteer browsers install chrome
-RUN ls -la $PUPPETEER_CACHE_DIR
 
 # Copy app source
 COPY . .
