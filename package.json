@@ -9,5 +9,8 @@
   "dependencies": {
     "express": "^4.19.2",
     "rebrowser-playwright": "^1.0.5"
+  },
+  "devDependencies": {
+    "playwright": "^1.45.1"
   }
 }
