@@ -1,5 +1,11 @@
 const express = require('express');
-const puppeteer = require('rebrowser-puppeteer');
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const AdblockerPlugin = require('puppeteer-extra-plugin-adblocker');
+const chromium = require('@sparticuz/chromium');
+
+puppeteer.use(StealthPlugin());
+puppeteer.use(AdblockerPlugin({ blockTrackers: true }));
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -16,7 +22,9 @@ app.get('/api/scrape', async (req, res) => {
   let browser = null;
   try {
     browser = await puppeteer.launch({
-      headless: 'auto',
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
     });
 
     const page = await browser.newPage();
