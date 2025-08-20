@@ -11,7 +11,6 @@ COPY package.json ./
 RUN npm install
 
 # Install Playwright browsers and dependencies
-ENV PLAYWRIGHT_BROWSERS_PATH=/usr/src/app/pw-browsers
 RUN npx playwright install --with-deps
 
 # Copy app source
