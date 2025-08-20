@@ -45,19 +45,13 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends
 
 # Copy package.json and package-lock.json
-COPY package*.json ./
+COPY package.json ./
 
 # Install app dependencies
 RUN npm install
 
 # Copy app source
 COPY . .
-
-# Environment variables for Turso
-ARG TURSO_DATABASE_URL
-ARG TURSO_AUTH_TOKEN
-ENV TURSO_DATABASE_URL=${TURSO_DATABASE_URL}
-ENV TURSO_AUTH_TOKEN=${TURSO_AUTH_TOKEN}
 
 # Expose port
 EXPOSE 3000
