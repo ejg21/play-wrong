@@ -3,24 +3,15 @@ const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const AdblockerPlugin = require('puppeteer-extra-plugin-adblocker');
 const chromium = require('@sparticuz/chromium');
-const NodeCache = require('node-cache');
 
 puppeteer.use(StealthPlugin());
 puppeteer.use(AdblockerPlugin({ blockTrackers: true }));
 
 const app = express();
 const port = process.env.PORT || 3000;
-const myCache = new NodeCache({ stdTTL: 86400 });
 
 app.get('/api/scrape', async (req, res) => {
   const { url, filter, clickSelector, origin: customOrigin, referer, iframe, screenshot, waitFor } = req.query;
-
-  const cacheKey = req.originalUrl;
-  const cachedValue = myCache.get(cacheKey);
-  if (cachedValue) {
-    console.log(`Returning cached response for: ${url}`);
-    return res.status(200).json(cachedValue);
-  }
 
   console.log(`Scraping url: ${url}`);
 
@@ -112,16 +103,12 @@ app.get('/api/scrape', async (req, res) => {
       screenshotBase64 = screenshotBuffer.toString('base64');
     }
 
-    const responseData = {
+    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
+    res.status(200).json({
       message: `Successfully scraped ${url}`,
       requests,
       screenshot: screenshotBase64,
-    };
-
-    myCache.set(cacheKey, responseData);
-
-    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
-    res.status(200).json(responseData);
+    });
   } catch (error) {
     console.error(error);
     res.status(500).send(`An error occurred while scraping the page: ${error.message}`);
