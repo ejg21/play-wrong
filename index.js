@@ -1,11 +1,17 @@
 const express = require('express');
-const { chromium } = require('rebrowser-playwright');
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const AdblockerPlugin = require('puppeteer-extra-plugin-adblocker');
+const chromium = require('@sparticuz/chromium');
+
+puppeteer.use(StealthPlugin());
+puppeteer.use(AdblockerPlugin({ blockTrackers: true }));
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 app.get('/api/scrape', async (req, res) => {
-  const { url, clickSelector, origin: customOrigin, referer, iframe, screenshot, waitFor } = req.query;
+  const { url, filter, clickSelector, origin: customOrigin, referer, iframe, screenshot, waitFor } = req.query;
 
   console.log(`Scraping url: ${url}`);
 
@@ -15,12 +21,14 @@ app.get('/api/scrape', async (req, res) => {
 
   let browser = null;
   try {
-    browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0',
+    browser = await puppeteer.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
     });
-    const page = await context.newPage();
 
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0');
     const headers = {
       'Accept-Language': 'en-US,en;q=0.5',
       'Sec-GPC': '1',
@@ -31,19 +39,19 @@ app.get('/api/scrape', async (req, res) => {
 
     let requests = [];
 
-    await page.route('**/*', (route) => {
-      const request = route.request();
+    await page.setRequestInterception(true);
+    page.on('request', (request) => {
       const resourceType = request.resourceType();
       const requestUrl = request.url();
 
       const blockedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.css', '.woff', '.woff2', '.ttf', '.otf'];
       if (resourceType === 'image' || resourceType === 'stylesheet' || resourceType === 'font' || blockedExtensions.some(ext => requestUrl.endsWith(ext))) {
-        route.abort();
+        request.abort();
         return;
       }
 
       if (requestUrl.includes('google-analytics') || requestUrl.includes('googletagmanager')) {
-        route.abort();
+        request.abort();
         return;
       }
 
@@ -52,7 +60,7 @@ app.get('/api/scrape', async (req, res) => {
         method: request.method(),
         headers: request.headers(),
       });
-      route.continue();
+      request.continue();
     });
 
     let pageOrFrame = page;
@@ -60,7 +68,7 @@ app.get('/api/scrape', async (req, res) => {
       await page.setContent(`<iframe src="${url}" style="width:100%; height:100vh;" frameBorder="0"></iframe>`);
       const iframeElement = await page.waitForSelector('iframe');
       pageOrFrame = await iframeElement.contentFrame();
-      await page.waitForTimeout(5000);
+      await new Promise(resolve => setTimeout(resolve, 5000));
     } else {
       await page.goto(url, { waitUntil: 'domcontentloaded' });
     }
@@ -86,7 +94,7 @@ app.get('/api/scrape', async (req, res) => {
         console.log(`Did not find request containing "${waitFor}" within the timeout.`);
       }
     } else {
-      await page.waitForTimeout(5000);
+      await new Promise(resolve => setTimeout(resolve, 5000));
     }
 
     let screenshotBase64 = null;

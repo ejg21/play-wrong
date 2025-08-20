@@ -1,13 +1,17 @@
 {
   "name": "scrape-right-railway",
   "version": "1.0.0",
-  "description": "A powerful, serverless web scraper built with rebrowser-playwright and deployed on Railway.",
+  "description": "A powerful, serverless web scraper built with Playwright and deployed on Railway.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
+    "@sparticuz/chromium": "^123.0.1",
     "express": "^4.19.2",
-    "rebrowser-playwright": "^1.0.5"
+    "puppeteer-core": "^22.12.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-adblocker": "^2.13.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
 }
