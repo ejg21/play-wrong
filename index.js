@@ -47,7 +47,7 @@ app.get('/api/scrape', async (req, res) => {
 
     if (cacheResult.rows.length > 0) {
       const row = cacheResult.rows;
-      const cacheAge = Date.now() - row.createdAt;
+      const cacheAge = Date.now() - new Date(row.createdAt).getTime();
       if (cacheAge < 3600000) { // 1 hour TTL
         console.log(`Returning cached response for ${url}`);
         return res.status(200).json({
@@ -141,7 +141,7 @@ app.get('/api/scrape', async (req, res) => {
     try {
       await turso.execute({
         sql: 'INSERT INTO scrape_cache (url, data, screenshot, createdAt) VALUES (?, ?, ?, ?) ON CONFLICT(url) DO UPDATE SET data = excluded.data, screenshot = excluded.screenshot, createdAt = excluded.createdAt',
-        args: [url, JSON.stringify(requests), screenshotBase64, Date.now()],
+        args: [url, JSON.stringify(requests), screenshotBase64, new Date().toISOString()],
       });
     } catch (error) {
       console.error('Failed to cache result:', error);
