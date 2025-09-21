@@ -1,81 +1,124 @@
 const express = require('express');
-const { addJob, getJob, getQueueSize, MAX_CONCURRENT_REQUESTS } = require('./queue');
-const { processJob } = require('./worker');
-const { v4: uuidv4 } = require('uuid');
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const AdblockerPlugin = require('puppeteer-extra-plugin-adblocker');
+const chromium = require('@sparticuz/chromium');
+
+puppeteer.use(StealthPlugin());
+puppeteer.use(AdblockerPlugin({ blockTrackers: true }));
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-let activeWorkers = 0;
-const jobResults = {};
-
-const startWorker = () => {
-  if (activeWorkers < MAX_CONCURRENT_REQUESTS) {
-    const job = getJob();
-    if (job) {
-      activeWorkers++;
-      console.log(`Starting job ${job.jobId}. Active workers: ${activeWorkers}. Queue size: ${getQueueSize()}`);
-      processJob(job).then(result => {
-        jobResults[job.jobId] = { status: 'completed', result };
-      }).catch(error => {
-        jobResults[job.jobId] = { status: 'failed', error: error.message };
-      }).finally(() => {
-        activeWorkers--;
-        console.log(`Finished job ${job.jobId}. Active workers: ${activeWorkers}. Queue size: ${getQueueSize()}`);
-        startWorker(); // Check for next job
-      });
-      startWorker(); // Try to start another worker immediately
-    }
-  }
-};
-
 app.get('/api/scrape', async (req, res) => {
   const { url, filter, clickSelector, origin: customOrigin, referer, iframe, screenshot, waitFor } = req.query;
+
+  console.log(`Scraping url: ${url}`);
 
   if (!url) {
     return res.status(400).send('Please provide a URL parameter.');
   }
 
-  const jobId = uuidv4();
-  const job = { url, filter, clickSelector, origin: customOrigin, referer, iframe, screenshot, waitFor, jobId };
-  
-  addJob(job);
-  jobResults[jobId] = { status: 'queued' };
-  console.log(`Job ${jobId} added to queue. Queue size: ${getQueueSize()}`);
-  
-  res.status(202).json({
-    message: `Scraping job ${jobId} has been queued.`,
-    jobId,
-    queuePosition: getQueueSize(),
-    status_endpoint: `/api/scrape/status/${jobId}`
-  });
+  let browser = null;
+  try {
+    browser = await puppeteer.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
+    });
 
-  startWorker();
-});
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0');
+    const headers = {
+      'Accept-Language': 'en-US,en;q=0.5',
+      'Sec-GPC': '1',
+    };
+    if (customOrigin) headers['Origin'] = customOrigin;
+    if (referer) headers['Referer'] = referer;
+    await page.setExtraHTTPHeaders(headers);
 
-app.get('/api/scrape/status/:jobId', (req, res) => {
-    const { jobId } = req.params;
-    const result = jobResults[jobId];
+    let requests = [];
 
-    if (!result) {
-        return res.status(404).json({ message: 'Job not found.' });
-    }
+    await page.setRequestInterception(true);
+    page.on('request', (request) => {
+      const resourceType = request.resourceType();
+      const requestUrl = request.url();
 
-    if (result.status === 'completed') {
-        res.status(200).json(result.result);
-        delete jobResults[jobId]; // Clean up after retrieval
-    } else if (result.status === 'failed') {
-        res.status(500).json({ message: 'Job failed.', error: result.error });
-        delete jobResults[jobId]; // Clean up after retrieval
+      const blockedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.css', '.woff', '.woff2', '.ttf', '.otf'];
+      if (resourceType === 'image' || resourceType === 'stylesheet' || resourceType === 'font' || blockedExtensions.some(ext => requestUrl.endsWith(ext))) {
+        request.abort();
+        return;
+      }
+
+      if (requestUrl.includes('google-analytics') || requestUrl.includes('googletagmanager')) {
+        request.abort();
+        return;
+      }
+
+      requests.push({
+        url: requestUrl,
+        method: request.method(),
+        headers: request.headers(),
+      });
+      request.continue();
+    });
+
+    let pageOrFrame = page;
+    if (iframe === 'true') {
+      await page.setContent(`<iframe src="${url}" style="width:100%; height:100vh;" frameBorder="0"></iframe>`);
+      const iframeElement = await page.waitForSelector('iframe');
+      pageOrFrame = await iframeElement.contentFrame();
+      await new Promise(resolve => setTimeout(resolve, 5000));
     } else {
-        res.status(202).json({ message: 'Job is still being processed.', status: result.status });
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
     }
+
+    if (clickSelector) {
+      try {
+        const element = await pageOrFrame.waitForSelector(clickSelector, { timeout: 5000 });
+        if (element) {
+          await element.click();
+          console.log(`Clicked element with selector: ${clickSelector}`);
+        }
+      } catch (e) {
+        console.log(`Could not find or click the element with selector "${clickSelector}".`);
+      }
+    }
+
+    if (waitFor) {
+      try {
+        console.log(`Waiting for request containing: ${waitFor}`);
+        await page.waitForRequest(request => request.url().includes(waitFor), { timeout: 15000 });
+        console.log(`Found request: ${waitFor}`);
+      } catch (e) {
+        console.log(`Did not find request containing "${waitFor}" within the timeout.`);
+      }
+    } else {
+      await new Promise(resolve => setTimeout(resolve, 5000));
+    }
+
+    let screenshotBase64 = null;
+    if (screenshot === 'true') {
+      const screenshotBuffer = await page.screenshot({ encoding: 'base64' });
+      screenshotBase64 = screenshotBuffer.toString('base64');
+    }
+
+    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
+    res.status(200).json({
+      message: `Successfully scraped ${url}`,
+      requests,
+      screenshot: screenshotBase64,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send(`An error occurred while scraping the page: ${error.message}`);
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
+  }
 });
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
-  // Start initial workers
-  for (let i = 0; i < MAX_CONCURRENT_REQUESTS; i++) {
-    startWorker();
-  }
 });
