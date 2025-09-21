@@ -45,10 +45,10 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends
 
 # Copy package.json and package-lock.json
-COPY package.json ./
+COPY package.json package-lock.json ./
 
 # Install app dependencies
-RUN npm install
+RUN npm cache clean --force && npm install --no-optional
 
 # Copy app source
 COPY . .
