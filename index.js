@@ -21,7 +21,16 @@ app.get('/api/scrape', async (req, res) => {
   let browser = null;
   try {
     browser = await puppeteer.launch({
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu'
+      ],
       executablePath: '/usr/bin/chromium',
       headless: true,
     });
@@ -43,13 +52,18 @@ app.get('/api/scrape', async (req, res) => {
       const resourceType = request.resourceType();
       const requestUrl = request.url();
 
-      const blockedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.css', '.woff', '.woff2', '.ttf', '.otf'];
-      if (resourceType === 'image' || resourceType === 'stylesheet' || resourceType === 'font' || blockedExtensions.some(ext => requestUrl.endsWith(ext))) {
-        request.abort();
-        return;
-      }
+      const blockedResourceTypes = ['image', 'stylesheet', 'font', 'media'];
+      const blockedDomains = [
+        'google-analytics.com',
+        'googletagmanager.com',
+        'facebook.net',
+        'twitter.com',
+        'linkedin.com',
+        'doubleclick.net',
+        'youtube.com',
+      ];
 
-      if (requestUrl.includes('google-analytics') || requestUrl.includes('googletagmanager')) {
+      if (blockedResourceTypes.includes(resourceType) || blockedDomains.some(domain => requestUrl.includes(domain))) {
         request.abort();
         return;
       }
@@ -67,7 +81,10 @@ app.get('/api/scrape', async (req, res) => {
       await page.setContent(`<iframe src="${url}" style="width:100%; height:100vh;" frameBorder="0"></iframe>`);
       const iframeElement = await page.waitForSelector('iframe');
       pageOrFrame = await iframeElement.contentFrame();
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      // Wait for network idle to ensure all dynamic content is loaded
+      await pageOrFrame.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {
+        console.log('waitForNavigation timed out, continuing execution.');
+      });
     } else {
       await page.goto(url, { waitUntil: 'domcontentloaded' });
     }
@@ -86,14 +103,29 @@ app.get('/api/scrape', async (req, res) => {
 
     if (waitFor) {
       try {
-        console.log(`Waiting for request containing: ${waitFor}`);
-        await page.waitForRequest(request => request.url().includes(waitFor), { timeout: 15000 });
+        console.log(`Waiting for request matching: ${waitFor}`);
+        await page.waitForRequest(
+          (request) => {
+            try {
+              // Try to treat waitFor as a regex
+              const regex = new RegExp(waitFor);
+              return regex.test(request.url());
+            } catch (e) {
+              // If it's not a valid regex, treat it as a plain string
+              return request.url().includes(waitFor);
+            }
+          },
+          { timeout: 15000 }
+        );
         console.log(`Found request: ${waitFor}`);
       } catch (e) {
         console.log(`Did not find request containing "${waitFor}" within the timeout.`);
       }
     } else {
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      // Wait for network idle to ensure all dynamic content is loaded
+      await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {
+        console.log('waitForNavigation timed out, continuing execution.');
+      });
     }
 
     let screenshotBase64 = null;
