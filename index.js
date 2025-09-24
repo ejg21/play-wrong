@@ -3,7 +3,6 @@ const express = require('express');
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const AdblockerPlugin = require('puppeteer-extra-plugin-adblocker');
-const bodyParser = require('body-parser');
 const CryptoJS = require('crypto-js');
 
 puppeteer.use(StealthPlugin());
@@ -12,34 +11,20 @@ puppeteer.use(AdblockerPlugin({ blockTrackers: true }));
 const app = express();
 const port = process.env.PORT || 3000;
 
-app.use(bodyParser.json());
-
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
 if (!ENCRYPTION_KEY) {
   console.error('FATAL: ENCRYPTION_KEY environment variable is not set.');
   process.exit(1);
 }
 
-app.post('/api/scrape', async (req, res) => {
-  const { encryptedUrl, filter, clickSelector, origin: customOrigin, referer, iframe, screenshot, waitFor } = req.body;
-
-  if (!encryptedUrl) {
-    return res.status(400).send('Please provide an encryptedUrl.');
-  }
-
-  let url;
-  try {
-    const decryptedBytes = CryptoJS.AES.decrypt(encryptedUrl, ENCRYPTION_KEY);
-    url = decryptedBytes.toString(CryptoJS.enc.Utf8);
-    if (!url) {
-      throw new Error('Decryption failed or resulted in an empty URL.');
-    }
-  } catch (e) {
-    console.error('Decryption error:', e);
-    return res.status(400).send('Invalid encrypted URL.');
-  }
+app.get('/api/scrape', async (req, res) => {
+  const { url, filter, clickSelector, origin: customOrigin, referer, iframe, screenshot, waitFor } = req.query;
 
   console.log(`Scraping url: ${url}`);
+
+  if (!url) {
+    return res.status(400).send('Please provide a URL parameter.');
+  }
 
   let browser = null;
   try {
@@ -157,12 +142,14 @@ app.post('/api/scrape', async (req, res) => {
       screenshotBase64 = screenshotBuffer.toString('base64');
     }
 
-    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
-    res.status(200).json({
+    const responseData = {
       message: `Successfully scraped ${url}`,
       requests,
       screenshot: screenshotBase64,
-    });
+    };
+    const encryptedResponse = CryptoJS.AES.encrypt(JSON.stringify(responseData), ENCRYPTION_KEY).toString();
+    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
+    res.status(200).send(encryptedResponse);
   } catch (error) {
     console.error(error);
     res.status(500).send(`An error occurred while scraping the page: ${error.message}`);
