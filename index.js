@@ -18,7 +18,7 @@ if (!ENCRYPTION_KEY) {
 }
 
 app.get('/api/scrape', async (req, res) => {
-  const { url, filter, clickSelector, origin: customOrigin, referer, iframe, screenshot, waitFor } = req.query;
+  const { url, filter, clickSelector, origin: customOrigin, referer, iframe, screenshot, waitFor, waitForDomain } = req.query;
 
   console.log(`Scraping url: ${url}`);
 
@@ -111,23 +111,25 @@ app.get('/api/scrape', async (req, res) => {
 
     if (waitFor) {
       try {
-        console.log(`Waiting for request matching: ${waitFor}`);
+        console.log(`Waiting for request ending with: ${waitFor}`);
         await page.waitForRequest(
-          (request) => {
-            try {
-              // Try to treat waitFor as a regex
-              const regex = new RegExp(waitFor);
-              return regex.test(request.url());
-            } catch (e) {
-              // If it's not a valid regex, treat it as a plain string
-              return request.url().includes(waitFor);
-            }
-          },
+          (request) => request.url().endsWith(waitFor),
           { timeout: 15000 }
         );
-        console.log(`Found request: ${waitFor}`);
+        console.log(`Found request ending with: ${waitFor}`);
       } catch (e) {
-        console.log(`Did not find request containing "${waitFor}" within the timeout.`);
+        console.log(`Did not find request ending with "${waitFor}" within the timeout.`);
+      }
+    } else if (waitForDomain) {
+      try {
+        console.log(`Waiting for request from domain: ${waitForDomain}`);
+        await page.waitForRequest(
+          (request) => request.url().includes(waitForDomain),
+          { timeout: 15000 }
+        );
+        console.log(`Found request from domain: ${waitForDomain}`);
+      } catch (e) {
+        console.log(`Did not find request from domain "${waitForDomain}" within the timeout.`);
       }
     } else {
       // Wait for network idle to ensure all dynamic content is loaded
