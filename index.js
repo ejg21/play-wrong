@@ -4,11 +4,13 @@ const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const AdblockerPlugin = require('puppeteer-extra-plugin-adblocker');
 const CryptoJS = require('crypto-js');
+const cors = require('cors');
 
 puppeteer.use(StealthPlugin());
 puppeteer.use(AdblockerPlugin({ blockTrackers: true }));
 
 const app = express();
+app.use(cors());
 const port = process.env.PORT || 3000;
 
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
