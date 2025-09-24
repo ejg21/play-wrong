@@ -149,7 +149,7 @@ app.get('/api/scrape', async (req, res) => {
     };
     const encryptedResponse = CryptoJS.AES.encrypt(JSON.stringify(responseData), ENCRYPTION_KEY).toString();
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
-    res.status(200).send(encryptedResponse);
+    res.status(200).json({ data: encryptedResponse });
   } catch (error) {
     console.error(error);
     res.status(500).send(`An error occurred while scraping the page: ${error.message}`);
