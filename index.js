@@ -19,13 +19,15 @@ if (!ENCRYPTION_KEY) {
   process.exit(1);
 }
 
-app.get('/api/scrape', async (req, res) => {
-  const { url, filter, clickSelector, origin: customOrigin, referer, iframe, screenshot, waitFor, waitForDomain } = req.query;
+async function scrapeUrl(queryParams) {
+  const { url, filter, clickSelector, origin: customOrigin, referer, iframe, screenshot, waitFor, waitForDomain } = queryParams;
 
   console.log(`Scraping url: ${url}`);
 
   if (!url) {
-    return res.status(400).send('Please provide a URL parameter.');
+    const err = new Error('Please provide a URL parameter.');
+    err.statusCode = 400;
+    throw err;
   }
 
   let browser = null;
@@ -146,21 +148,38 @@ app.get('/api/scrape', async (req, res) => {
       screenshotBase64 = screenshotBuffer.toString('base64');
     }
 
-    const responseData = {
+    return {
       message: `Successfully scraped ${url}`,
       requests,
       screenshot: screenshotBase64,
     };
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
+  }
+}
+
+app.get('/api/scrape', async (req, res) => {
+  try {
+    const responseData = await scrapeUrl(req.query);
     const encryptedResponse = CryptoJS.AES.encrypt(JSON.stringify(responseData), ENCRYPTION_KEY).toString();
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
     res.status(200).json({ data: encryptedResponse });
   } catch (error) {
     console.error(error);
-    res.status(500).send(`An error occurred while scraping the page: ${error.message}`);
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
+    res.status(error.statusCode || 500).send(error.message || 'An error occurred while scraping the page.');
+  }
+});
+
+app.get('/api/scrape/secret', async (req, res) => {
+  try {
+    const responseData = await scrapeUrl(req.query);
+    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
+    res.status(200).json(responseData);
+  } catch (error) {
+    console.error(error);
+    res.status(error.statusCode || 500).send(error.message || 'An error occurred while scraping the page.');
   }
 });
 
