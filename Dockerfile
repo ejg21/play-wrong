@@ -4,9 +4,6 @@ FROM node:18-slim
 # Set the working directory in the container
 WORKDIR /usr/src/app
 
-# Install Chromium
-RUN apt-get update && apt-get install -y chromium --no-install-recommends
-
 # Copy package.json and package-lock.json
 COPY package.json package-lock.json ./
 

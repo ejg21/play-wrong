@@ -43,7 +43,6 @@ async function scrapeUrl(queryParams) {
         '--single-process',
         '--disable-gpu'
       ],
-      executablePath: '/usr/bin/chromium',
       headless: true,
     });
 
