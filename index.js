@@ -1,13 +1,11 @@
 require('dotenv').config();
 const express = require('express');
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-const AdblockerPlugin = require('puppeteer-extra-plugin-adblocker');
+const { chromium } = require('playwright-extra');
+const stealth = require('playwright-stealth');
 const CryptoJS = require('crypto-js');
 const cors = require('cors');
 
-puppeteer.use(StealthPlugin());
-puppeteer.use(AdblockerPlugin({ blockTrackers: true }));
+chromium.use(stealth());
 
 const app = express();
 app.use(cors());
@@ -32,23 +30,21 @@ async function scrapeUrl(queryParams) {
 
   let browser = null;
   try {
-    browser = await puppeteer.launch({
+    browser = await chromium.launch({
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu'
       ],
-      executablePath: '/usr/bin/chromium',
-      headless: true,
     });
 
-    const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0');
+    const context = await browser.newContext({
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0',
+    });
+
+    const page = await context.newPage();
+    
     const headers = {
       'Accept-Language': 'en-US,en;q=0.5',
       'Sec-GPC': '1',
@@ -59,8 +55,8 @@ async function scrapeUrl(queryParams) {
 
     let requests = [];
 
-    await page.setRequestInterception(true);
-    page.on('request', (request) => {
+    await page.route('**/*', (route) => {
+      const request = route.request();
       const resourceType = request.resourceType();
       const requestUrl = request.url();
 
@@ -76,8 +72,7 @@ async function scrapeUrl(queryParams) {
       ];
 
       if (blockedResourceTypes.includes(resourceType) || blockedDomains.some(domain => requestUrl.includes(domain))) {
-        request.abort();
-        return;
+        return route.abort();
       }
 
       requests.push({
@@ -85,7 +80,7 @@ async function scrapeUrl(queryParams) {
         method: request.method(),
         headers: request.headers(),
       });
-      request.continue();
+      return route.continue();
     });
 
     let pageOrFrame = page;
@@ -93,9 +88,8 @@ async function scrapeUrl(queryParams) {
       await page.setContent(`<iframe src="${url}" style="width:100%; height:100vh;" frameBorder="0"></iframe>`);
       const iframeElement = await page.waitForSelector('iframe');
       pageOrFrame = await iframeElement.contentFrame();
-      // Wait for network idle to ensure all dynamic content is loaded
-      await pageOrFrame.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {
-        console.log('waitForNavigation timed out, continuing execution.');
+      await pageOrFrame.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {
+        console.log('waitForLoadState timed out, continuing execution.');
       });
     } else {
       await page.goto(url, { waitUntil: 'domcontentloaded' });
@@ -112,7 +106,7 @@ async function scrapeUrl(queryParams) {
         console.log(`Could not find or click the element with selector "${clickSelector}".`);
       }
     }
-
+    
     if (waitFor) {
       try {
         console.log(`Waiting for request ending with: ${waitFor}`);
@@ -136,15 +130,14 @@ async function scrapeUrl(queryParams) {
         console.log(`Did not find request from domain "${waitForDomain}" within the timeout.`);
       }
     } else {
-      // Wait for network idle to ensure all dynamic content is loaded
-      await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {
-        console.log('waitForNavigation timed out, continuing execution.');
+      await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {
+        console.log('waitForLoadState timed out, continuing execution.');
       });
     }
 
     let screenshotBase64 = null;
     if (screenshot === 'true') {
-      const screenshotBuffer = await page.screenshot({ encoding: 'base64' });
+      const screenshotBuffer = await page.screenshot();
       screenshotBase64 = screenshotBuffer.toString('base64');
     }
 
