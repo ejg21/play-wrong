@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y chromium --no-install-recommends
 COPY package.json package-lock.json ./
 
 # Install app dependencies
-RUN npm cache clean --force && npm install --no-optional
+RUN npm cache clean --force && npm install --no-optional && npm install pm2 -g
 
 # Copy app source
 COPY . .
@@ -20,4 +20,4 @@ COPY . .
 EXPOSE 3000
 
 # Start the app
-CMD [ "node", "index.js" ]
+CMD [ "pm2-runtime", "start", "index.js", "--name", "scraper" ]
