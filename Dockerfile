@@ -1,31 +1,17 @@
-# ---- Base ----
-FROM node:18-slim AS base
+# Use an official Node.js runtime as a parent image
+FROM node:18-slim
 
 # Set the working directory in the container
 WORKDIR /usr/src/app
 
-# Install Chromium & clean up
-RUN apt-get update && apt-get install -y chromium --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
-
-# ---- Dependencies ----
-FROM base AS dependencies
+# Install Chromium
+RUN apt-get update && apt-get install -y chromium --no-install-recommends
 
 # Copy package.json and package-lock.json
 COPY package.json package-lock.json ./
 
 # Install app dependencies
-RUN npm install --no-optional && npm install pm2 -g
-
-# ---- Release ----
-FROM base AS release
-WORKDIR /usr/src/app
-
-# Copy dependencies
-COPY --from=dependencies /usr/src/app/node_modules ./node_modules
-COPY --from=dependencies /usr/local/bin/pm2 /usr/local/bin/pm2
-COPY --from=dependencies /usr/local/lib/node_modules/pm2 /usr/local/lib/node_modules/pm2
-
+RUN npm cache clean --force && npm install --no-optional && npm install pm2 -g
 
 # Copy app source
 COPY . .
