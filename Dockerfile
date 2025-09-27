@@ -5,13 +5,10 @@ FROM node:18-slim
 WORKDIR /usr/src/app
 
 # Install Chromium
-RUN apt-get update && apt-get install -y chromium --no-install-recommends && rm -rf /var/lib/apt/lists/*
-
-# Set env to skip Puppeteer's browser download
-ENV PUPPETEER_SKIP_DOWNLOAD=true
+RUN apt-get update && apt-get install -y chromium --no-install-recommends
 
 # Copy package.json and package-lock.json
-COPY package.json package-lock.json .npmrc ./
+COPY package.json package-lock.json ./
 
 # Install app dependencies
 RUN npm cache clean --force && npm install --no-optional
@@ -23,4 +20,4 @@ COPY . .
 EXPOSE 3000
 
 # Start the app
-CMD [ "npm", "start" ]
+CMD [ "node", "index.js" ]
