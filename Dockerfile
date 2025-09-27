@@ -8,7 +8,7 @@ WORKDIR /usr/src/app
 COPY package.json package-lock.json ./
 
 # Install app dependencies
-RUN npm ci
+RUN npm cache clean --force && npm install --no-optional
 
 # Copy app source
 COPY . .
