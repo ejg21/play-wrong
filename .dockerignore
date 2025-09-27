@@ -1,9 +1,0 @@
-# Dependencies
-/node_modules
-
-# Environment
-.env
-
-# Git
-.git
-.gitignore
