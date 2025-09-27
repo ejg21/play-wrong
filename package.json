@@ -4,7 +4,7 @@
   "description": "A powerful, serverless web scraper built with Playwright and deployed on Railway.",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "pm2-runtime start index.js --name scraper"
   },
   "dependencies": {
     "express": "^5.1.0",
@@ -14,6 +14,7 @@
     "puppeteer-extra-plugin-adblocker": "^2.13.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "crypto-js": "^4.2.0",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "pm2": "^5.4.0"
   }
 }

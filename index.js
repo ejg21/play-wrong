@@ -40,7 +40,6 @@ async function scrapeUrl(queryParams) {
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
         '--no-zygote',
-        '--single-process',
         '--disable-gpu'
       ],
       executablePath: '/usr/bin/chromium',
@@ -48,7 +47,6 @@ async function scrapeUrl(queryParams) {
     });
 
     const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0');
     const headers = {
       'Accept-Language': 'en-US,en;q=0.5',
       'Sec-GPC': '1',
