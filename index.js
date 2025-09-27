@@ -1,13 +1,12 @@
 require('dotenv').config();
 const express = require('express');
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-const AdblockerPlugin = require('puppeteer-extra-plugin-adblocker');
+const { chromium } = require('playwright-extra');
+const stealth = require('playwright-extra-plugin-stealth')();
+const adblocker = require('@ghostery/adblocker-playwright');
 const CryptoJS = require('crypto-js');
 const cors = require('cors');
 
-puppeteer.use(StealthPlugin());
-puppeteer.use(AdblockerPlugin({ blockTrackers: true }));
+chromium.use(stealth);
 
 const app = express();
 app.use(cors());
@@ -32,7 +31,7 @@ async function scrapeUrl(queryParams) {
 
   let browser = null;
   try {
-    browser = await puppeteer.launch({
+    browser = await chromium.launch({
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -43,12 +42,14 @@ async function scrapeUrl(queryParams) {
         '--single-process',
         '--disable-gpu'
       ],
-      executablePath: '/usr/bin/chromium',
       headless: true,
     });
 
-    const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0');
+    const context = await browser.newContext({
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0'
+    });
+    const page = await context.newPage();
+
     const headers = {
       'Accept-Language': 'en-US,en;q=0.5',
       'Sec-GPC': '1',
@@ -59,33 +60,36 @@ async function scrapeUrl(queryParams) {
 
     let requests = [];
 
-    await page.setRequestInterception(true);
-    page.on('request', (request) => {
-      const resourceType = request.resourceType();
-      const requestUrl = request.url();
+    await page.route('**/*', (route, request) => {
+        const resourceType = request.resourceType();
+        const requestUrl = request.url();
 
-      const blockedResourceTypes = ['image', 'stylesheet', 'font', 'media'];
-      const blockedDomains = [
-        'google-analytics.com',
-        'googletagmanager.com',
-        'facebook.net',
-        'twitter.com',
-        'linkedin.com',
-        'doubleclick.net',
-        'youtube.com',
-      ];
+        const blockedResourceTypes = ['image', 'stylesheet', 'font', 'media'];
+        const blockedDomains = [
+            'google-analytics.com',
+            'googletagmanager.com',
+            'facebook.net',
+            'twitter.com',
+            'linkedin.com',
+            'doubleclick.net',
+            'youtube.com',
+        ];
 
-      if (blockedResourceTypes.includes(resourceType) || blockedDomains.some(domain => requestUrl.includes(domain))) {
-        request.abort();
-        return;
-      }
+        if (blockedResourceTypes.includes(resourceType) || blockedDomains.some(domain => requestUrl.includes(domain))) {
+            route.abort();
+            return;
+        }
 
-      requests.push({
-        url: requestUrl,
-        method: request.method(),
-        headers: request.headers(),
-      });
-      request.continue();
+        requests.push({
+            url: requestUrl,
+            method: request.method(),
+            headers: request.headers(),
+        });
+        route.continue();
+    });
+    
+    adblocker.PlaywrightBlocker.fromPrebuiltAdsAndTracking(fetch).then((blocker) => {
+        blocker.enableBlockingInPage(page);
     });
 
     let pageOrFrame = page;
@@ -93,9 +97,8 @@ async function scrapeUrl(queryParams) {
       await page.setContent(`<iframe src="${url}" style="width:100%; height:100vh;" frameBorder="0"></iframe>`);
       const iframeElement = await page.waitForSelector('iframe');
       pageOrFrame = await iframeElement.contentFrame();
-      // Wait for network idle to ensure all dynamic content is loaded
-      await pageOrFrame.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {
-        console.log('waitForNavigation timed out, continuing execution.');
+      await pageOrFrame.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {
+        console.log('waitForLoadState timed out, continuing execution.');
       });
     } else {
       await page.goto(url, { waitUntil: 'domcontentloaded' });
@@ -136,9 +139,8 @@ async function scrapeUrl(queryParams) {
         console.log(`Did not find request from domain "${waitForDomain}" within the timeout.`);
       }
     } else {
-      // Wait for network idle to ensure all dynamic content is loaded
-      await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {
-        console.log('waitForNavigation timed out, continuing execution.');
+      await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {
+        console.log('waitForLoadState timed out, continuing execution.');
       });
     }
 
