@@ -12,7 +12,7 @@
     "playwright": "*",
     "playwright-extra": "^4.3.6",
     "@ghostery/adblocker-playwright": "*",
-    "playwright-extra-plugin-stealth": "^2.11.2",
+    "playwright-extra-plugin-stealth": "*",
     "crypto-js": "^4.2.0",
     "dotenv": "^16.4.5"
   }
