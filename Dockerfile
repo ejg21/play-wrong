@@ -4,12 +4,14 @@ FROM node:18-slim
 # Set the working directory in the container
 WORKDIR /usr/src/app
 
-# Install app dependencies
-COPY package.json package-lock.json ./
-RUN npm cache clean --force && npm install --no-optional
+# Install Chromium
+RUN apt-get update && apt-get install -y chromium --no-install-recommends
 
-# Install Playwright browsers and dependencies
-RUN npx playwright install --with-deps
+# Copy package.json and package-lock.json
+COPY package.json package-lock.json ./
+
+# Install app dependencies
+RUN npm cache clean --force && npm install --no-optional
 
 # Copy app source
 COPY . .
