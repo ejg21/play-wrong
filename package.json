@@ -9,9 +9,8 @@
   "dependencies": {
     "express": "^5.1.0",
     "cors": "^2.8.5",
-    "playwright": "^1.45.3",
     "playwright-extra": "^4.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "playwright-stealth": "^1.0.1",
     "crypto-js": "^4.2.0",
     "dotenv": "^16.4.5"
   }

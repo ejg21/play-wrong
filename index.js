@@ -1,11 +1,11 @@
 require('dotenv').config();
 const express = require('express');
 const { chromium } = require('playwright-extra');
-const stealth = require('puppeteer-extra-plugin-stealth')();
+const stealth = require('playwright-stealth');
 const CryptoJS = require('crypto-js');
 const cors = require('cors');
 
-chromium.use(stealth);
+chromium.use(stealth());
 
 const app = express();
 app.use(cors());
