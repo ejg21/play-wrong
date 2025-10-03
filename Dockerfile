@@ -11,16 +11,20 @@ RUN npm cache clean --force && npm install --no-optional
 # Copy app source
 COPY . .
 
-# Install Puppeteer Chromium
-RUN npx puppeteer install chromium
-
 # New stage for the final image
 FROM node:18-slim
 
+# Set the working directory in the container
 WORKDIR /usr/src/app
 
+# Install Chromium and clean up apt-get cache
+RUN apt-get update && \
+    apt-get install -y chromium --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*
+
 # Copy dependencies and source from the builder stage
-COPY --from=builder /usr/src/app /usr/src/app
+COPY --from=builder /usr/src/app/node_modules ./node_modules
+COPY --from=builder /usr/src/app ./
 
 # Expose port
 EXPOSE 3000
