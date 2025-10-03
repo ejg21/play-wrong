@@ -20,7 +20,9 @@ if (!ENCRYPTION_KEY) {
 }
 
 async function scrapeUrl(queryParams) {
-  const { url, clickSelector, origin: customOrigin, referer, iframe, screenshot, waitFor, waitForDomain } = queryParams;
+  const { url, filter, clickSelector, origin: customOrigin, referer, iframe, screenshot, waitFor, waitForDomain } = queryParams;
+
+  console.log(`Scraping url: ${url}`);
 
   if (!url) {
     const err = new Error('Please provide a URL parameter.');
@@ -28,12 +30,9 @@ async function scrapeUrl(queryParams) {
     throw err;
   }
 
-  console.log(`Scraping url: ${url}`);
   let browser = null;
-
   try {
     browser = await puppeteer.launch({
-      headless: true,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -41,14 +40,14 @@ async function scrapeUrl(queryParams) {
         '--no-first-run',
         '--no-zygote',
         '--single-process',
-        '--disable-gpu',
+        '--disable-gpu'
       ],
-      // Let Puppeteer download Chromium automatically
+      executablePath: '/usr/bin/chromium',
+      headless: true,
     });
 
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0');
-
     const headers = {
       'Accept-Language': 'en-US,en;q=0.5',
       'Sec-GPC': '1',
@@ -58,11 +57,12 @@ async function scrapeUrl(queryParams) {
     await page.setExtraHTTPHeaders(headers);
 
     let requests = [];
-    await page.setRequestInterception(true);
 
+    await page.setRequestInterception(true);
     page.on('request', (request) => {
       const resourceType = request.resourceType();
       const requestUrl = request.url();
+
       const blockedResourceTypes = ['image', 'stylesheet', 'font', 'media'];
       const blockedDomains = [
         'google-analytics.com',
@@ -74,7 +74,7 @@ async function scrapeUrl(queryParams) {
         'youtube.com',
       ];
 
-      if (blockedResourceTypes.includes(resourceType) || blockedDomains.some(d => requestUrl.includes(d))) {
+      if (blockedResourceTypes.includes(resourceType) || blockedDomains.some(domain => requestUrl.includes(domain))) {
         request.abort();
         return;
       }
@@ -88,67 +88,74 @@ async function scrapeUrl(queryParams) {
     });
 
     let pageOrFrame = page;
-
     if (iframe === 'true') {
       await page.setContent(`<iframe src="${url}" style="width:100%; height:100vh;" frameBorder="0"></iframe>`);
-      const iframeElement = await page.waitForSelector('iframe', { timeout: 5000 });
+      const iframeElement = await page.waitForSelector('iframe');
       pageOrFrame = await iframeElement.contentFrame();
-
-      // Wait for network idle safely
-      try {
-        await pageOrFrame.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 });
-      } catch (e) {
-        console.log('Iframe network idle timeout, continuing...');
-      }
+      // Wait for network idle to ensure all dynamic content is loaded
+      await pageOrFrame.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {
+        console.log('waitForNavigation timed out, continuing execution.');
+      });
     } else {
-      try {
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
-      } catch (e) {
-        console.log('Page.goto failed or timed out, continuing...');
-      }
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
     }
 
     if (clickSelector) {
       try {
-        const el = await pageOrFrame.waitForSelector(clickSelector, { timeout: 5000 });
-        if (el) await el.click();
-        console.log(`Clicked element: ${clickSelector}`);
-      } catch {
-        console.log(`Could not find or click element: ${clickSelector}`);
+        const element = await pageOrFrame.waitForSelector(clickSelector, { timeout: 5000 });
+        if (element) {
+          await element.click();
+          console.log(`Clicked element with selector: ${clickSelector}`);
+        }
+      } catch (e) {
+        console.log(`Could not find or click the element with selector "${clickSelector}".`);
       }
     }
 
     if (waitFor) {
       try {
-        await page.waitForRequest(r => r.url().endsWith(waitFor), { timeout: 15000 });
+        console.log(`Waiting for request ending with: ${waitFor}`);
+        await page.waitForRequest(
+          (request) => request.url().endsWith(waitFor),
+          { timeout: 15000 }
+        );
         console.log(`Found request ending with: ${waitFor}`);
-      } catch {
-        console.log(`Did not find request ending with: ${waitFor}`);
+      } catch (e) {
+        console.log(`Did not find request ending with "${waitFor}" within the timeout.`);
       }
     } else if (waitForDomain) {
       try {
-        await page.waitForRequest(r => r.url().includes(waitForDomain), { timeout: 15000 });
+        console.log(`Waiting for request from domain: ${waitForDomain}`);
+        await page.waitForRequest(
+          (request) => request.url().includes(waitForDomain),
+          { timeout: 15000 }
+        );
         console.log(`Found request from domain: ${waitForDomain}`);
-      } catch {
-        console.log(`Did not find request from domain: ${waitForDomain}`);
+      } catch (e) {
+        console.log(`Did not find request from domain "${waitForDomain}" within the timeout.`);
       }
     } else {
-      try {
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 });
-      } catch {
-        console.log('Final network idle wait timed out, continuing...');
-      }
+      // Wait for network idle to ensure all dynamic content is loaded
+      await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }).catch(() => {
+        console.log('waitForNavigation timed out, continuing execution.');
+      });
     }
 
     let screenshotBase64 = null;
     if (screenshot === 'true') {
-      screenshotBase64 = await page.screenshot({ encoding: 'base64' });
+      const screenshotBuffer = await page.screenshot({ encoding: 'base64' });
+      screenshotBase64 = screenshotBuffer.toString('base64');
     }
 
-    return { message: `Successfully scraped ${url}`, requests, screenshot: screenshotBase64 };
-
+    return {
+      message: `Successfully scraped ${url}`,
+      requests,
+      screenshot: screenshotBase64,
+    };
   } finally {
-    if (browser) await browser.close();
+    if (browser) {
+      await browser.close();
+    }
   }
 }
 
